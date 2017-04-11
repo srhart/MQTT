@@ -3,7 +3,7 @@
  Simple MQTT protocol wrapper for Espruino sockets.
  */
 
-/** 'private' costants */
+/** 'private' constants */
 var C = {
     PROTOCOL_LEVEL: 4,  // MQTT protocol level
     DEF_PORT: 1883, // MQTT default server port
@@ -28,8 +28,9 @@ var TYPE = {
     DISCONNECT: 14
 };
 
+/** No longer a constant */
 var pakId = Math.floor(Math.random() * 65535);
-var msgCache = {};
+
 /**
  Return Codes
  http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc385349256
@@ -137,7 +138,6 @@ var mqttUid = (function () {
             .toString(16)
             .substring(1);
     }
-
     return function () {
         return s4() + s4() + s4();
     };
@@ -163,7 +163,7 @@ function mqttPublish(topic, message, qos) {
 
     if (qos === 1 || qos === 2) {
         variable += pid;
-        return msgCache[pid] = mqttPacket(cmd, variable, message);
+        return mqttPacket(cmd, variable, message);
     } else {
         return mqttPacket(cmd, variable, message);
     }
@@ -173,7 +173,7 @@ function mqttPublish(topic, message, qos) {
 function mqttSubscribe(topic, qos) {
     var cmd = TYPE.SUBSCRIBE << 4 | 2;
     var pid = mqttPid();
-    return msgCache[pid] = mqttPacket(cmd,
+    return mqttPacket(cmd,
         pid/*Packet id*/,
         mqttStr(topic) +
         fromCharCode(qos)/*QOS*/);
@@ -183,7 +183,7 @@ function mqttSubscribe(topic, qos) {
 function mqttUnsubscribe(topic) {
     var cmd = TYPE.UNSUBSCRIBE << 4 | 2;
     var pid = mqttPid();
-    return msgCache[pid] = mqttPacket(cmd,
+    return mqttPacket(cmd,
         pid/*Packet id*/,
         mqttStr(topic));
 }
@@ -251,7 +251,6 @@ MQTT.prototype.connect = function (client) {
                 }
             }
             else if (type === TYPE.PUBACK) {
-                delete msgCache[getPid(pData)];
             }
             else if (type === TYPE.PUBREC) {
                 client.write(fromCharCode(TYPE.PUBREL << 4 | 2) + "\x02" + getPid(pData));
@@ -260,13 +259,10 @@ MQTT.prototype.connect = function (client) {
                 client.write(fromCharCode(TYPE.PUBCOMP << 4) + "\x02" + getPid(pData));
             }
             else if (type === TYPE.PUBCOMP) {
-                delete msgCache[getPid(pData)];
             }
             else if (type === TYPE.SUBACK) {
-                delete msgCache[getPid(pData)];
             }
             else if (type === TYPE.UNSUBACK) {
-                delete msgCache[getPid(pData)];
             }
             else if (type === TYPE.PINGREQ) {
                 client.write(fromCharCode(TYPE.PINGRESP << 4) + "\x00"); // reply to PINGREQ
