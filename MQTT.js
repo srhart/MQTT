@@ -29,19 +29,19 @@ var TYPE = {
 };
 
 /** No longer a constant */
-var pakId = Math.floor(Math.random() * 65535);
+//var pakId = Math.floor(Math.random() * 65535);
 
 /**
  Return Codes
  http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc385349256
  **/
 var RETURN_CODES = {
-    ACCEPTED: 0,
-    UNACCEPTABLE_PROTOCOL_VERSION: 1,
-    IDENTIFIER_REJECTED: 2,
-    SERVER_UNAVAILABLE: 3,
-    BAD_USER_NAME_OR_PASSWORD: 4,
-    NOT_AUTHORIZED: 5
+    0: 'ACCEPTED',
+    1: 'UNACCEPTABLE_PROTOCOL_VERSION',
+    2: 'IDENTIFIER_REJECTED',
+    3: 'SERVER_UNAVAILABLE',
+    4: 'BAD_USER_NAME_OR_PASSWORD',
+    5: 'NOT_AUTHORIZED'
 };
 
 /** MQTT constructor */
@@ -56,6 +56,7 @@ function MQTT(server, options) {
     this.password = options.password;
     this.client = false;
     this.connected = false;
+    this.pakId = Math.floor(Math.random() * 65534);
     this.ping_interval =
         this.keep_alive < this.C.PING_INTERVAL ? (this.keep_alive - 5) : this.C.PING_INTERVAL;
     this.protocol_name = options.protocol_name || "MQTT";
@@ -96,8 +97,7 @@ function mqttPacketLength(length) {
 /** MQTT packet length decoder - algorithm from reference docs */
 function mqttPacketLengthDec(length) {
     var mul = 1;
-    var bytes = 0;
-    var decLength = 0;
+    var bytes = decLength = 0;
     do {
         var lb = (length.charCodeAt(bytes++));
         decLength += mul * (lb & 127);
@@ -145,8 +145,8 @@ var mqttUid = (function () {
 
 /** Generate PID */
 function mqttPid() {
-    pakId = pakId > 65534 ? 1 : ++pakId;
-    return fromCharCode(pakId >> 8) + fromCharCode(pakId & 0xFF);
+    this.pakId = this.pakId > 65534 ? 1 : ++this.pakId;
+    return fromCharCode(this.pakId >> 8) + fromCharCode(this.pakId & 0xFF);
 }
 
 /** Get PID from message */
@@ -157,12 +157,10 @@ function getPid(data) {
 /** PUBLISH control packet */
 function mqttPublish(topic, message, qos) {
     var cmd = TYPE.PUBLISH << 4 | (qos << 1);
-    var pid = mqttPid();
-    // Packet id must be included for QOS > 0
     var variable = mqttStr(topic);
-
-    if (qos === 1 || qos === 2) {
-        variable += pid;
+    // Packet id must be included for QOS > 0
+    if (qos > 0) {
+        variable += mqttPid();
         return mqttPacket(cmd, variable, message);
     } else {
         return mqttPacket(cmd, variable, message);
@@ -172,19 +170,17 @@ function mqttPublish(topic, message, qos) {
 /** SUBSCRIBE control packet */
 function mqttSubscribe(topic, qos) {
     var cmd = TYPE.SUBSCRIBE << 4 | 2;
-    var pid = mqttPid();
     return mqttPacket(cmd,
-        pid/*Packet id*/,
+        mqttPid(),
         mqttStr(topic) +
-        fromCharCode(qos)/*QOS*/);
+        fromCharCode(qos));
 }
 
 /** UNSUBSCRIBE control packet */
 function mqttUnsubscribe(topic) {
     var cmd = TYPE.UNSUBSCRIBE << 4 | 2;
-    var pid = mqttPid();
     return mqttPacket(cmd,
-        pid/*Packet id*/,
+        mqttPid(),
         mqttStr(topic));
 }
 
@@ -200,7 +196,6 @@ MQTT.prototype.connect = function (client) {
     var mqo = this;
 
     var pinger = function () {
-        // Set or reset regular keep_alive ping
         if (mqo.pintr) clearInterval(mqo.pintr);
         mqo.pintr = setInterval(function () {
             mqo.ping();
@@ -210,14 +205,11 @@ MQTT.prototype.connect = function (client) {
     var onConnect = function () {
         client.write(mqo.mqttConnect(mqo.client_id));
 
-        // Disconnect if no CONNACK is received
         mqo.ctimo = setTimeout(function () {
             mqo.ctimo = undefined;
+            mqo.emit('disconnected');
             mqo.disconnect();
         }, mqo.C.CONNECT_TIMEOUT);
-
-
-        pinger();
 
         // Incoming data
         client.on('data', function (data) {
@@ -265,7 +257,7 @@ MQTT.prototype.connect = function (client) {
             else if (type === TYPE.UNSUBACK) {
             }
             else if (type === TYPE.PINGREQ) {
-                client.write(fromCharCode(TYPE.PINGRESP << 4) + "\x00"); // reply to PINGREQ
+                client.write(fromCharCode(TYPE.PINGRESP << 4) + "\x00");
             }
             else if (type === TYPE.PINGRESP) {
                 mqo.emit('ping_reply');
@@ -276,31 +268,20 @@ MQTT.prototype.connect = function (client) {
                 var returnCode = pData.charCodeAt(3);
                 if (returnCode === RETURN_CODES.ACCEPTED) {
                     mqo.connected = true;
+                    pinger();
                     mqo.partData = '';
                     mqo.emit('connected');
                     mqo.emit('connect');
                 }
                 else {
                     var mqttError = "Connection refused, ";
+                    mqo.connected = false;
                     mqo.partData = '';
-                    switch (returnCode) {
-                        case RETURN_CODES.UNACCEPTABLE_PROTOCOL_VERSION:
-                            mqttError += "unacceptable protocol version.";
-                            break;
-                        case RETURN_CODES.IDENTIFIER_REJECTED:
-                            mqttError += "identifier rejected.";
-                            break;
-                        case RETURN_CODES.SERVER_UNAVAILABLE:
-                            mqttError += "server unavailable.";
-                            break;
-                        case RETURN_CODES.BAD_USER_NAME_OR_PASSWORD:
-                            mqttError += "bad user name or password.";
-                            break;
-                        case RETURN_CODES.NOT_AUTHORIZED:
-                            mqttError += "not authorized.";
-                            break;
-                        default:
-                            mqttError += "unknown return code: " + returnCode + ".";
+                    if (returnCode < 6) {
+                        mqttError += RETURN_CODES[returnCode];
+                    }
+                    else {
+                        mqttError += "unknown return code: " + returnCode + ".";
                     }
                     mqo.emit('error', mqttError);
                 }
@@ -317,7 +298,7 @@ MQTT.prototype.connect = function (client) {
             if (mqo.connected) {
                 mqo.connected = false;
                 if (mqo.pintr) clearInterval(mqo.pintr);
-                mqo.pintr = undefined;
+                mqo.pintr = mqo.ctimo = undefined;
                 mqo.emit('disconnected');
                 mqo.emit('close');
             }
@@ -330,26 +311,27 @@ MQTT.prototype.connect = function (client) {
     }
     else {
         client = require("net").connect({host: mqo.server, port: mqo.port}, onConnect);
-        // TODO: Reconnect on timeout
     }
 };
 
 /** Disconnect from server */
 MQTT.prototype.disconnect = function () {
+    if (!this.client) return;
     this.client.write(fromCharCode(TYPE.DISCONNECT << 4) + "\x00");
     this.client.end();
     this.client = false;
-    this.connected = false;
 };
 
 /** Publish message using specified topic */
 MQTT.prototype.publish = function (topic, message, qos) {
+    if (!this.client) return;
     var _qos = qos || this.C.DEF_QOS;
     this.client.write(mqttPublish(topic, message.toString(), _qos));
 };
 
 /** Subscribe to topic (filter) */
 MQTT.prototype.subscribe = function (topics, opts, callback) {
+    if (!this.client) return;
     if (!opts) {
         opts = {qos: this.C.DEF_QOS};
     }
@@ -391,11 +373,13 @@ MQTT.prototype.subscribe = function (topics, opts, callback) {
 
 /** Unsubscribe to topic (filter) */
 MQTT.prototype.unsubscribe = function (topic) {
+    if (!this.client) return;
     this.client.write(mqttUnsubscribe(topic));
 };
 
 /** Send ping request to server */
 MQTT.prototype.ping = function () {
+    if (!this.client) return;
     this.client.write(fromCharCode(TYPE.PINGREQ << 4) + "\x00");
 };
 
