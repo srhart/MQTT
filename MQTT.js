@@ -194,7 +194,6 @@ function createEscapedHex(number) {
 /** Establish connection and set up keep_alive ping */
 MQTT.prototype.connect = function (client) {
     var mqo = this;
-
     var pinger = function () {
         if (mqo.pintr) clearInterval(mqo.pintr);
         mqo.pintr = setInterval(function () {
@@ -266,7 +265,7 @@ MQTT.prototype.connect = function (client) {
                 if (mqo.ctimo) clearTimeout(mqo.ctimo);
                 mqo.ctimo = undefined;
                 var returnCode = pData.charCodeAt(3);
-                if (returnCode === RETURN_CODES.ACCEPTED) {
+                if (RETURN_CODES[returnCode] === 'ACCEPTED') {
                     mqo.connected = true;
                     pinger();
                     mqo.partData = '';
