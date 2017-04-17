@@ -97,15 +97,15 @@ function mqttPacketLength(length) {
 /** MQTT packet length decoder - algorithm from reference docs */
 function mqttPacketLengthDec(length) {
     var mul = 1;
-    var bytes = decLength = 0;
+    var bytes = decL = 0;
     do {
         var lb = (length.charCodeAt(bytes++));
-        decLength += mul * (lb & 127);
+        decL += mul * (lb & 127);
         mul *= 128;
         if (mul > 2097152) return 0;
         if ((lb & 128) === 0) break;
     } while (bytes < 5);
-    return {"decLen": decLength, "lenBytes": bytes};
+    return {"decLen": decL, "lenBy": bytes};
 }
 
 /** MQTT standard packet formatter */
@@ -125,9 +125,6 @@ function parsePublish(data) {
             qos: (cmd & 0x6) >> 1,
             retain: cmd & 0x1
         };
-    }
-    else {
-        return undefined;
     }
 }
 
@@ -219,14 +216,14 @@ MQTT.prototype.connect = function (client) {
             }
 
             var type = data.charCodeAt(0) >> 4;
-            var decLen = mqttPacketLengthDec(data.substr(1, 5));
-            var pLen = decLen.decLen + decLen.lenBytes + 1;
+            var dLen = mqttPacketLengthDec(data.substr(1, 5));
+            var pLen = dLen.decLen + dLen.lenBy + 1;
 
             if (data.length < pLen) {
                 mqo.partData = data;
                 return;
             }
-            var pData = data.substr(decLen.lenBytes + 1, pLen);
+            var pData = data.substr(dLen.lenBy + 1, pLen);
 
             if (data.length > pLen) {
                 client.emit('data', data.substr(pLen));
@@ -324,19 +321,13 @@ MQTT.prototype.disconnect = function () {
 /** Publish message using specified topic */
 MQTT.prototype.publish = function (topic, message, qos) {
     if (!this.client) return;
-    var _qos = qos || this.C.DEF_QOS;
-    this.client.write(mqttPublish(topic, message.toString(), _qos));
+    this.client.write(mqttPublish(topic, message.toString(), (qos || this.C.DEF_QOS)));
 };
 
 /** Subscribe to topic (filter) */
 MQTT.prototype.subscribe = function (topics, opts, callback) {
     if (!this.client) return;
-    if (!opts) {
-        opts = {qos: this.C.DEF_QOS};
-    }
-    if ('number' === typeof opts) {
-        opts = {qos: opts};
-    }
+    opts = ('number' === typeof opts ? {qos:opts} : opts) || {qos: this.C.DEF_QOS};
 
     var subs = [];
     if ('string' === typeof topics) {
@@ -361,7 +352,6 @@ MQTT.prototype.subscribe = function (topics, opts, callback) {
     }
 
     subs.forEach(function (sub) {
-        // TODO: Multiple topics in single subscribe packet
         this.client.write(mqttSubscribe(sub.topic, sub.qos));
     }.bind(this));
 
