@@ -6,26 +6,26 @@
 /** 'private' constants */
 var C = {
     PROTOCOL_LEVEL: 4,  // MQTT protocol level
-    DEF_PORT: 1883, // MQTT default server port
+    DEF_PORT      : 1883, // MQTT default server port
     DEF_KEEP_ALIVE: 60   // Default keep_alive (s)
 };
 
 /** Control packet types */
 var TYPE = {
-    CONNECT: 1,
-    CONNACK: 2,
-    PUBLISH: 3,
-    PUBACK: 4,
-    PUBREC: 5,
-    PUBREL: 6,
-    PUBCOMP: 7,
-    SUBSCRIBE: 8,
-    SUBACK: 9,
+    CONNECT    : 1,
+    CONNACK    : 2,
+    PUBLISH    : 3,
+    PUBACK     : 4,
+    PUBREC     : 5,
+    PUBREL     : 6,
+    PUBCOMP    : 7,
+    SUBSCRIBE  : 8,
+    SUBACK     : 9,
     UNSUBSCRIBE: 10,
-    UNSUBACK: 11,
-    PINGREQ: 12,
-    PINGRESP: 13,
-    DISCONNECT: 14
+    UNSUBACK   : 11,
+    PINGREQ    : 12,
+    PINGRESP   : 13,
+    DISCONNECT : 14
 };
 
 /** No longer a constant */
@@ -65,9 +65,9 @@ function MQTT(server, options) {
 
 /** 'public' constants here */
 MQTT.prototype.C = {
-    DEF_QOS: 0,    // Default QOS level
-    CONNECT_TIMEOUT: 5000, // Time (s) to wait for CONNACK
-    PING_INTERVAL: 40    // Server ping interval (s)
+    DEF_QOS        : 0,    // Default QOS level
+    CONNECT_TIMEOUT: 5000, // Time (ms) to wait for CONNACK
+    PING_INTERVAL  : 40    // Server ping interval (s)
 };
 
 /* Utility functions ***************************/
@@ -97,7 +97,8 @@ function mqttPacketLength(length) {
 /** MQTT packet length decoder - algorithm from reference docs */
 function mqttPacketLengthDec(length) {
     var mul = 1;
-    var bytes = decL = 0;
+    var bytes = 0;
+    var decL = 0;
     do {
         var lb = (length.charCodeAt(bytes++));
         decL += mul * (lb & 127);
@@ -119,11 +120,11 @@ function parsePublish(data) {
         var cmd = data.charCodeAt(0);
         var var_len = data.charCodeAt(1) << 8 | data.charCodeAt(2);
         return {
-            topic: data.substr(3, var_len),
+            topic  : data.substr(3, var_len),
             message: data.substr(3 + var_len, data.length - var_len),
-            dup: (cmd & 0x8) >> 3,
-            qos: (cmd & 0x6) >> 1,
-            retain: cmd & 0x1
+            dup    : (cmd & 0x8) >> 3,
+            qos    : (cmd & 0x6) >> 1,
+            retain : cmd & 0x1
         };
     }
 }
@@ -135,6 +136,7 @@ var mqttUid = (function () {
             .toString(16)
             .substring(1);
     }
+
     return function () {
         return s4() + s4() + s4();
     };
@@ -261,19 +263,18 @@ MQTT.prototype.connect = function (client) {
             else if (type === TYPE.CONNACK) {
                 if (mqo.ctimo) clearTimeout(mqo.ctimo);
                 mqo.ctimo = undefined;
+                mqo.partData = '';
                 var returnCode = pData.charCodeAt(3);
                 if (RETURN_CODES[returnCode] === 'ACCEPTED') {
                     mqo.connected = true;
                     pinger();
-                    mqo.partData = '';
                     mqo.emit('connected');
                     mqo.emit('connect');
                 }
                 else {
                     var mqttError = "Connection refused, ";
                     mqo.connected = false;
-                    mqo.partData = '';
-                    if (returnCode < 6) {
+                    if (returnCode > 0 && returnCode < 6) {
                         mqttError += RETURN_CODES[returnCode];
                     }
                     else {
@@ -327,7 +328,7 @@ MQTT.prototype.publish = function (topic, message, qos) {
 /** Subscribe to topic (filter) */
 MQTT.prototype.subscribe = function (topics, opts, callback) {
     if (!this.client) return;
-    opts = ('number' === typeof opts ? {qos:opts} : opts) || {qos: this.C.DEF_QOS};
+    opts = ('number' === typeof opts ? {qos: opts} : opts) || {qos: this.C.DEF_QOS};
 
     var subs = [];
     if ('string' === typeof topics) {
@@ -337,7 +338,7 @@ MQTT.prototype.subscribe = function (topics, opts, callback) {
         topics.forEach(function (topic) {
             subs.push({
                 topic: topic,
-                qos: opts.qos
+                qos  : opts.qos
             });
         });
     } else {
@@ -346,7 +347,7 @@ MQTT.prototype.subscribe = function (topics, opts, callback) {
             .forEach(function (k) {
                 subs.push({
                     topic: k,
-                    qos: topics[k]
+                    qos  : topics[k]
                 });
             });
     }
